@@ -9,16 +9,20 @@ using WShapes = System.Windows.Shapes;
 namespace SystemMonitor
 {
     /// <summary>
-    /// Радар звуку: показує, з якого боку чути звук. 5.1/7.1 дають спереду/ззаду/збоку, стерео лише ліво/право.
+    /// Радар звуку: сектори за каналами, стрілка загального напрямку і короткі сплески (кроки, постріли),
+    /// що з'являються там, звідки почули звук, і згасають за секунду.
     /// </summary>
     internal sealed class RadarWindow : GlassWindow
     {
         protected override string Key { get { return "radar"; } }
 
+        const int BlipPool = 14;
         readonly Canvas canvas = new Canvas();
         readonly DispatcherTimer timer;
         readonly List<WShapes.Path> wedges = new List<WShapes.Path>();
+        readonly List<WShapes.Ellipse> blipDots = new List<WShapes.Ellipse>();
         readonly WShapes.Line arrow = new WShapes.Line { StrokeThickness = 3, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Triangle, Visibility = Visibility.Collapsed };
+        readonly TextBlock label = new TextBlock();
         int built = -1;
         double size = 170;
 
@@ -68,11 +72,12 @@ namespace SystemMonitor
         {
             canvas.Children.Clear();
             wedges.Clear();
+            blipDots.Clear();
             double[] ang = AppCore.Audio.Angles;
             built = ang.Length;
             double c = size / 2;
-            WShapes.Ellipse ring = new WShapes.Ellipse { Width = size, Height = size, Stroke = Util.Brush("#40FFFFFF"), StrokeThickness = 1 };
-            canvas.Children.Add(ring);
+
+            canvas.Children.Add(new WShapes.Ellipse { Width = size, Height = size, Stroke = Util.Brush("#40FFFFFF"), StrokeThickness = 1 });
             WShapes.Ellipse inner = new WShapes.Ellipse { Width = size * 0.3, Height = size * 0.3, Stroke = Util.Brush("#30FFFFFF"), StrokeThickness = 1 };
             Canvas.SetLeft(inner, c - size * 0.15); Canvas.SetTop(inner, c - size * 0.15);
             canvas.Children.Add(inner);
@@ -97,6 +102,13 @@ namespace SystemMonitor
                 canvas.Children.Add(p);
             }
 
+            for (int i = 0; i < BlipPool; i++)
+            {
+                WShapes.Ellipse d = new WShapes.Ellipse { Width = 10, Height = 10, Visibility = Visibility.Collapsed, Fill = Util.Brush("#FFD166"), Stroke = Util.Brush("#80FFFFFF"), StrokeThickness = 1 };
+                blipDots.Add(d);
+                canvas.Children.Add(d);
+            }
+
             arrow.X1 = c; arrow.Y1 = c; arrow.X2 = c; arrow.Y2 = c;
             arrow.Stroke = Util.Brush(Cfg.TextColor);
             canvas.Children.Add(arrow);
@@ -104,6 +116,12 @@ namespace SystemMonitor
             WShapes.Ellipse dot = new WShapes.Ellipse { Width = 8, Height = 8, Fill = Util.Brush(Cfg.TextColor) };
             Canvas.SetLeft(dot, c - 4); Canvas.SetTop(dot, c - 4);
             canvas.Children.Add(dot);
+
+            label.Text = AppCore.Audio.Layout;
+            label.FontSize = 10;
+            label.Foreground = Util.Brush("#C0FFFFFF");
+            Canvas.SetLeft(label, 2); Canvas.SetTop(label, size - 14);
+            canvas.Children.Add(label);
         }
 
         static string ColorFor(double v)
@@ -117,33 +135,51 @@ namespace SystemMonitor
             float[] lv = a.Levels;
             double[] ang = a.Angles;
             if (lv.Length != built || ang.Length != built) { Rebuild(); return; }
+            if (label.Text != a.Layout) label.Text = a.Layout;
 
             double sens = Cfg.RadarSensitivity / 50.0;
             double peak = Math.Max(a.Peak, 0.03);
-            double vx = 0, vy = 0, total = 0;
             for (int i = 0; i < wedges.Count; i++)
             {
                 WShapes.Path w = wedges[i];
                 if (w == null) continue;
-                double v = lv[i] < 0.003 ? 0 : Math.Min(1.0, Math.Pow(Math.Min(1.0, lv[i] / peak) * sens, 0.8));
+                double v = lv[i] < 0.002 ? 0 : Math.Min(1.0, Math.Pow(Math.Min(1.0, lv[i] / peak) * sens, 0.8));
                 w.Opacity = 0.12 + 0.88 * v;
                 w.Fill = Util.Brush(ColorFor(v));
-                double t = ang[i] * Math.PI / 180.0;
-                vx += v * Math.Sin(t);
-                vy += v * Math.Cos(t);
-                total += v;
             }
 
-            double len = Math.Sqrt(vx * vx + vy * vy);
-            if (total > 0.15 && len > 0.12)
+            // стрілка загального напрямку (довжина = гучність, зосередженість = напрямленість)
+            double dx = a.DirX * sens, dy = a.DirY * sens;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len > 0.10)
             {
                 double c = size / 2;
-                double k = (size * 0.44) * Math.Min(1.0, len / Math.Max(total, 0.001));
-                arrow.X2 = c + vx / len * k;
-                arrow.Y2 = c - vy / len * k;
+                double k = Math.Min(1.0, len) / len * size * 0.44;
+                arrow.X2 = c + dx * k;
+                arrow.Y2 = c - dy * k;
                 arrow.Visibility = Visibility.Visible;
             }
             else arrow.Visibility = Visibility.Collapsed;
+
+            // сплески
+            SoundBlip[] bl = Cfg.RadarBlips ? a.SnapshotBlips() : new SoundBlip[0];
+            double now = AudioDirectionService.NowS;
+            double cc = size / 2, rr = size * 0.43;
+            for (int i = 0; i < blipDots.Count; i++)
+            {
+                WShapes.Ellipse d = blipDots[i];
+                if (i >= bl.Length) { d.Visibility = Visibility.Collapsed; continue; }
+                SoundBlip b = bl[bl.Length - 1 - i];
+                double age = now - b.T;
+                double t = b.Angle * Math.PI / 180.0;
+                double sz = 6 + 12 * b.Strength;
+                d.Width = sz; d.Height = sz;
+                Canvas.SetLeft(d, cc + rr * Math.Sin(t) - sz / 2);
+                Canvas.SetTop(d, cc - rr * Math.Cos(t) - sz / 2);
+                d.Opacity = Math.Max(0, 1.0 - age / 1.3);
+                d.Fill = Util.Brush(ColorFor(b.Strength));
+                d.Visibility = Visibility.Visible;
+            }
         }
     }
 }

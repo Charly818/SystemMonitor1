@@ -90,6 +90,51 @@ namespace SystemMonitor
             catch { }
         }
 
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr ExtractIcon(IntPtr hInst, string file, int index);
+        [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr hIcon);
+
+        public const uint WDA_EXCLUDEFROMCAPTURE = 0x11;
+        public const uint SRCCOPY = 0x00CC0020;
+        public const uint CAPTUREBLT = 0x40000000;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT { public int Left, Top, Right, Bottom; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct BITMAPINFOHEADER
+        {
+            public int biSize, biWidth, biHeight;
+            public short biPlanes, biBitCount;
+            public int biCompression, biSizeImage, biXPelsPerMeter, biYPelsPerMeter, biClrUsed, biClrImportant;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct BITMAPINFO { public BITMAPINFOHEADER bmiHeader; public uint bmiColors; }
+
+        [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+        [DllImport("user32.dll")] public static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint affinity);
+        [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hWnd);
+        [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+        [DllImport("gdi32.dll")] public static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+        [DllImport("gdi32.dll")] public static extern IntPtr SelectObject(IntPtr hdc, IntPtr obj);
+        [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr obj);
+        [DllImport("gdi32.dll")] public static extern bool DeleteDC(IntPtr hdc);
+        [DllImport("gdi32.dll")] public static extern bool BitBlt(IntPtr hdcDest, int x, int y, int cx, int cy, IntPtr hdcSrc, int x1, int y1, uint rop);
+        [DllImport("gdi32.dll")] static extern IntPtr CreateDIBSection(IntPtr hdc, ref BITMAPINFO pbmi, uint usage, out IntPtr bits, IntPtr section, uint offset);
+
+        /// <summary>32-бітний DIB зверху вниз; bits вказує на пікселі (B,G,R,A).</summary>
+        public static IntPtr CreateDib(IntPtr hdc, int w, int h, out IntPtr bits)
+        {
+            BITMAPINFO bi = new BITMAPINFO();
+            bi.bmiHeader.biSize = Marshal.SizeOf(typeof(BITMAPINFOHEADER));
+            bi.bmiHeader.biWidth = w;
+            bi.bmiHeader.biHeight = -h;
+            bi.bmiHeader.biPlanes = 1;
+            bi.bmiHeader.biBitCount = 32;
+            bi.bmiHeader.biCompression = 0;
+            return CreateDIBSection(hdc, ref bi, 0, out bits, IntPtr.Zero, 0);
+        }
+
         static ulong ToU(FILETIME f) { return ((ulong)(uint)f.dwHighDateTime << 32) | (uint)f.dwLowDateTime; }
 
         /// <summary>Лічильники процесора: idle і total (kernel+user; kernel уже містить idle).</summary>

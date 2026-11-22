@@ -18,6 +18,7 @@ namespace SystemMonitor
         public SettingsWindow()
         {
             Title = "Налаштування монітора";
+            Icon = Util.AppIcon();
             Width = 620;
             Height = 720;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -148,17 +149,25 @@ namespace SystemMonitor
             AddHeader(p, "Скло");
             StackPanel modeRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
             modeRow.Children.Add(new TextBlock { Text = "Спосіб скла", Width = 210, VerticalAlignment = VerticalAlignment.Center });
-            ComboBox cb = new ComboBox { Width = 230 };
-            cb.Items.Add("Авто (рекомендовано)");
+            ComboBox cb = new ComboBox { Width = 260 };
+            cb.Items.Add("Авто (Liquid Glass)");
             cb.Items.Add("Суцільний (без скла)");
             cb.Items.Add("Acrylic (запасний)");
             cb.Items.Add("Windows 11 Acrylic");
-            cb.SelectedIndex = Math.Max(0, Math.Min(3, Cfg.GlassMode + 1));
+            cb.Items.Add("Liquid Glass (живе)");
+            cb.SelectedIndex = Math.Max(0, Math.Min(4, Cfg.GlassMode + 1));
             cb.SelectionChanged += delegate { Cfg.GlassMode = cb.SelectedIndex - 1; AppCore.RequestApply(); };
             modeRow.Children.Add(cb);
             p.Children.Add(modeRow);
-            AddNote(p, "Скло розмиває те, що позаду, і оновлюється системою в реальному часі. Якщо панель виглядає непрозорою або чорною, виберіть інший спосіб.");
+            AddNote(p, "Liquid Glass розмиває й заломлює те, що позаду панелі, і оновлює це в реальному часі, навіть коли ви "
+                     + "її перетягуєте. Побічний ефект: панель не видно на скріншотах і в записі екрана (для скріншота оберіть «Суцільний»).");
 
+            AddSlider(p, "Розмиття", 0, 40, () => Cfg.Blur, v => Cfg.Blur = v);
+            AddSlider(p, "Заломлення по краях, %", 0, 100, () => Cfg.Refraction, v => Cfg.Refraction = v);
+            AddSlider(p, "Дисперсія (кольорові краї), %", 0, 100, () => Cfg.Dispersion, v => Cfg.Dispersion = v);
+            AddSlider(p, "Насиченість фону, %", 50, 250, () => Cfg.Saturation, v => Cfg.Saturation = v);
+            AddSlider(p, "Яскравість скла, %", 60, 140, () => Cfg.Brightness, v => Cfg.Brightness = v);
+            AddSlider(p, "Частота оновлення, кадрів/с", 10, 60, () => Cfg.GlassFps, v => Cfg.GlassFps = v);
             AddSlider(p, "Закруглення кутів", 0, 40, () => Cfg.CornerRadius, v => Cfg.CornerRadius = v);
             AddSlider(p, "Підфарбування, %", 0, 100, () => Cfg.TintStrength, v => Cfg.TintStrength = v);
             AddSlider(p, "Блік зверху, %", 0, 100, () => Cfg.Highlight, v => Cfg.Highlight = v);
@@ -266,9 +275,11 @@ namespace SystemMonitor
             AddHeader(p, "Радар звуку");
             AddSlider(p, "Розмір, px", 100, 320, () => Cfg.RadarSize, v => Cfg.RadarSize = v);
             AddSlider(p, "Чутливість, %", 10, 150, () => Cfg.RadarSensitivity, v => Cfg.RadarSensitivity = v);
-            AddNote(p, "Радар слухає звук системи. У стерео видно лише ліво/право. Щоб бачити спереду/ззаду/збоку, "
-                     + "потрібен багатоканальний звук: у Windows (Параметри → Звук → пристрій → Формат) поставте 5.1 або 7.1, "
-                     + "а в грі виберіть той самий режим динаміків.");
+            AddCheck(p, "Ігнорувати бас (точніше для кроків і пострілів)", () => Cfg.RadarHighPass, v => Cfg.RadarHighPass = v);
+            AddCheck(p, "Показувати сплески (де щойно почули звук)", () => Cfg.RadarBlips, v => Cfg.RadarBlips = v);
+            AddNote(p, "Радар слухає звук системи. У стерео видно лише ліво/право. Щоб бачити спереду, ззаду й збоку, "
+                     + "потрібен багатоканальний звук: у Windows (Параметри → Звук → ваш пристрій → Формат) поставте 5.1 або 7.1, "
+                     + "а в налаштуваннях гри виберіть той самий режим динаміків. У підписі на радарі видно, скільки каналів зараз приходить.");
             stAudio = AddStatus(p, "Стан радара:");
             return p;
         }

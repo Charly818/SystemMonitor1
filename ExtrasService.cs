@@ -159,6 +159,12 @@ namespace SystemMonitor
 
         void TopLoop()
         {
+            try { TopLoopCore(); }
+            catch (Exception ex) { Log.Write("топ-процес, потік: " + ex.Message); }
+        }
+
+        void TopLoopCore()
+        {
             Dictionary<int, TimeSpan> prev = new Dictionary<int, TimeSpan>();
             DateTime last = DateTime.UtcNow;
             int cores = Environment.ProcessorCount;

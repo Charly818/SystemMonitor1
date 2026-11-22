@@ -1,13 +1,39 @@
 using System;
 using System.Collections.Generic;
 using System.Net.NetworkInformation;
+using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace SystemMonitor
 {
     internal static class Util
     {
         static readonly Dictionary<string, SolidColorBrush> Cache = new Dictionary<string, SolidColorBrush>();
+
+        static ImageSource appIcon;
+        static bool iconTried;
+
+        /// <summary>Іконка програми, вшита в .exe (для вікон налаштувань і статистики).</summary>
+        public static ImageSource AppIcon()
+        {
+            if (iconTried) return appIcon;
+            iconTried = true;
+            try
+            {
+                IntPtr h = Native.ExtractIcon(IntPtr.Zero, Environment.ProcessPath ?? "", 0);
+                if (h.ToInt64() > 1)
+                {
+                    BitmapSource bs = Imaging.CreateBitmapSourceFromHIcon(h, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                    bs.Freeze();
+                    Native.DestroyIcon(h);
+                    appIcon = bs;
+                }
+            }
+            catch { }
+            return appIcon;
+        }
 
         public static Color Hex(string s, string fallback = "#FFFFFF")
         {

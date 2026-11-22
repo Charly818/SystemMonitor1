@@ -22,6 +22,7 @@ namespace SystemMonitor
     {
         protected readonly Border Chrome = new Border();
         protected readonly Grid Layers = new Grid();
+        protected readonly Image GlassImage = new Image();
         protected readonly Image BgImage = new Image();
         protected readonly WShapes.Rectangle TintRect = new WShapes.Rectangle();
         protected readonly WShapes.Rectangle HighlightRect = new WShapes.Rectangle();
@@ -30,12 +31,29 @@ namespace SystemMonitor
         protected IntPtr Hwnd = IntPtr.Zero;
 
         double heatTemp = double.NaN;
+        Color tintColor = Colors.White;
+        double tintAlpha = 0.14;
+        LiquidGlass lg;
+        readonly DispatcherTimer glassTimer;
+        bool liquidFailed;
+        int glassErrors;
+        int lastCfgMode = -99;
         bool placed;
         double lastSheenWidth = -1;
         readonly DispatcherTimer saveTimer;
         readonly DispatcherTimer topTimer;
 
         protected abstract string Key { get; }
+
+        /// <summary>Режим, який реально діє: якщо Liquid Glass не вдалося запустити, показуємо суцільний.</summary>
+        int Mode
+        {
+            get
+            {
+                int m = Cfg.EffectiveGlassMode();
+                return (m == 3 && liquidFailed) ? 0 : m;
+            }
+        }
         protected virtual bool BackgroundEnabled { get { return false; } }
         protected AppConfig Cfg { get { return AppConfig.Cur; } }
 
@@ -66,6 +84,16 @@ namespace SystemMonitor
             SheenRect.IsHitTestVisible = false;
             SheenRect.HorizontalAlignment = HorizontalAlignment.Left;
 
+            GlassImage.Stretch = Stretch.Fill;
+            GlassImage.IsHitTestVisible = false;
+            GlassImage.Visibility = Visibility.Collapsed;
+            GlassImage.HorizontalAlignment = HorizontalAlignment.Left;
+            GlassImage.VerticalAlignment = VerticalAlignment.Top;
+            RenderOptions.SetBitmapScalingMode(GlassImage, BitmapScalingMode.Linear);
+            GlassImage.SetBinding(FrameworkElement.WidthProperty, new Binding("ActualWidth") { Source = Layers });
+            GlassImage.SetBinding(FrameworkElement.HeightProperty, new Binding("ActualHeight") { Source = Layers });
+
+            Layers.Children.Add(GlassImage);
             Layers.Children.Add(BgImage);
             Layers.Children.Add(TintRect);
             Layers.Children.Add(HighlightRect);
@@ -87,6 +115,10 @@ namespace SystemMonitor
                 Cfg.Save();
             };
 
+            glassTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(33) };
+            glassTimer.Tick += delegate { GlassFrame(); };
+            Closed += delegate { glassTimer.Stop(); if (lg != null) lg.Dispose(); };
+
             topTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
             topTimer.Tick += delegate
             {
@@ -101,11 +133,16 @@ namespace SystemMonitor
         {
             base.OnSourceInitialized(e);
             Hwnd = new WindowInteropHelper(this).Handle;
-            int ex = Native.GetWindowLong(Hwnd, Native.GWL_EXSTYLE);
-            Native.SetWindowLong(Hwnd, Native.GWL_EXSTYLE, ex | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE);
-            ContextMenu = BuildMenu();
-            ApplyGlassMode();
-            ApplyRegion();
+            Log.Write("вікно " + Key + " створено, режим скла " + Cfg.EffectiveGlassMode());
+            try
+            {
+                int ex = Native.GetWindowLong(Hwnd, Native.GWL_EXSTYLE);
+                Native.SetWindowLong(Hwnd, Native.GWL_EXSTYLE, ex | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE);
+                ContextMenu = BuildMenu();
+                ApplyGlassMode();
+                ApplyRegion();
+            }
+            catch (Exception exc) { Log.Write("вікно " + Key + ", стилі: " + exc); }
         }
 
         void OnDown(object sender, MouseButtonEventArgs e)
@@ -180,6 +217,7 @@ namespace SystemMonitor
         void ApplyStyle()
         {
             AppConfig c = Cfg;
+            if (c.EffectiveGlassMode() != lastCfgMode) { lastCfgMode = c.EffectiveGlassMode(); liquidFailed = false; glassErrors = 0; }
             Chrome.CornerRadius = new CornerRadius(c.CornerRadius);
             Chrome.BorderThickness = new Thickness(c.Border > 0 ? 1 : 0);
 
@@ -207,7 +245,7 @@ namespace SystemMonitor
         void UpdateTint()
         {
             AppConfig c = Cfg;
-            int mode = c.EffectiveGlassMode();
+            int mode = Mode;
             Color baseC = mode == 0 ? Util.Hex(c.SolidColor, "#14161C") : Util.Hex(c.TintColor);
             double a = mode == 0 ? 1.0 : c.TintStrength / 100.0;
             if (c.TempTint && !double.IsNaN(heatTemp))
@@ -219,20 +257,49 @@ namespace SystemMonitor
                     if (mode != 0) a = Math.Min(1.0, a + frac * 0.30);
                 }
             }
-            TintRect.Fill = Util.Brush(Color.FromArgb((byte)(a * 255), baseC.R, baseC.G, baseC.B));
+            tintColor = baseC;
+            tintAlpha = a;
+            // у режимі Liquid Glass підфарбування вже вшите в картинку скла
+            TintRect.Fill = mode == 3 ? Brushes.Transparent : (Brush)Util.Brush(Color.FromArgb((byte)(a * 255), baseC.R, baseC.G, baseC.B));
         }
 
         void ApplyGlassMode()
         {
             if (Hwnd == IntPtr.Zero) return;
             AppConfig c = Cfg;
-            int mode = c.EffectiveGlassMode();
+            int mode = Mode;
             HwndSource src = HwndSource.FromHwnd(Hwnd);
 
             Native.SetAccent(Hwnd, 0, 0);
             Native.SetDwmInt(Hwnd, Native.DWMWA_SYSTEMBACKDROP_TYPE, 1);   // без системного фону
 
-            if (mode == 0)
+            if (mode != 3)
+            {
+                Native.SetWindowDisplayAffinity(Hwnd, 0);
+                GlassImage.Visibility = Visibility.Collapsed;
+                glassTimer.Stop();
+            }
+
+            if (mode == 3)
+            {
+                Color dark = Color.FromRgb(24, 26, 32);
+                Background = Util.Brush(dark);
+                if (src != null && src.CompositionTarget != null) src.CompositionTarget.BackgroundColor = dark;
+                Native.ExtendFrame(Hwnd, 0);
+                // ховаємо наше вікно від знімків екрана, щоб розмивати лише те, що позаду нього
+                if (!Native.SetWindowDisplayAffinity(Hwnd, Native.WDA_EXCLUDEFROMCAPTURE))
+                {
+                    Log.Write("вікно " + Key + ": Liquid Glass недоступний (SetWindowDisplayAffinity), переходжу на суцільний");
+                    liquidFailed = true;
+                    UpdateTint();
+                    ApplyGlassMode();
+                    return;
+                }
+                GlassImage.Visibility = Visibility.Visible;
+                glassTimer.Interval = TimeSpan.FromMilliseconds(1000.0 / Math.Max(5, Math.Min(60, c.GlassFps)));
+                glassTimer.Start();
+            }
+            else if (mode == 0)
             {
                 Color solid = Util.Hex(c.SolidColor, "#14161C");
                 Background = Util.Brush(solid);
@@ -254,6 +321,40 @@ namespace SystemMonitor
                 else
                 {
                     Native.SetDwmInt(Hwnd, Native.DWMWA_SYSTEMBACKDROP_TYPE, 3);   // Windows 11 Acrylic
+                }
+            }
+        }
+
+        /// <summary>Один кадр Liquid Glass: знімок екрана позаду вікна, розмиття, заломлення, показ.</summary>
+        void GlassFrame()
+        {
+            if (!IsVisible || Hwnd == IntPtr.Zero || Mode != 3) return;
+            try
+            {
+                Native.RECT rc;
+                if (!Native.GetWindowRect(Hwnd, out rc)) return;
+                double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+                AppConfig c = Cfg;
+                LgParams p = new LgParams
+                {
+                    Blur = c.Blur, Refraction = c.Refraction, Dispersion = c.Dispersion, Saturation = c.Saturation,
+                    Brightness = c.Brightness, Highlight = c.Highlight, Radius = c.CornerRadius,
+                    TintR = tintColor.R, TintG = tintColor.G, TintB = tintColor.B, TintAlpha = tintAlpha,
+                };
+                if (lg == null) lg = new LiquidGlass();
+                lg.Render(rc.Left, rc.Top, rc.Right - rc.Left, rc.Bottom - rc.Top, dpi, p);
+                if (lg.Bitmap != null && !ReferenceEquals(GlassImage.Source, lg.Bitmap)) GlassImage.Source = lg.Bitmap;
+                glassErrors = 0;
+            }
+            catch (Exception ex)
+            {
+                if (++glassErrors == 1) Log.Write("Liquid Glass, кадр: " + ex);
+                if (glassErrors > 20)
+                {
+                    Log.Write("Liquid Glass: забагато помилок, переходжу на суцільний");
+                    liquidFailed = true;
+                    UpdateTint();
+                    ApplyGlassMode();
                 }
             }
         }

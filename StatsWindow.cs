@@ -13,6 +13,7 @@ namespace SystemMonitor
         public StatsWindow()
         {
             Title = "Статистика";
+            Icon = Util.AppIcon();
             SizeToContent = SizeToContent.WidthAndHeight;
             ResizeMode = ResizeMode.NoResize;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;

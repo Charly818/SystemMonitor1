@@ -14,7 +14,7 @@ namespace SystemMonitor
         public bool SetupDone;
 
         // ---- скло
-        public int GlassMode = -1;            // -1 авто, 0 суцільний, 1 Acrylic (запасний), 2 Windows 11 Acrylic
+        public int GlassMode = -1;            // -1 авто (Liquid Glass), 0 суцільний, 1 Acrylic (запасний), 2 Windows 11 Acrylic, 3 Liquid Glass
         public int CornerRadius = 22;
         public string TintColor = "#FFFFFF";
         public string SolidColor = "#14161C";
@@ -27,6 +27,18 @@ namespace SystemMonitor
         public int FontSize = 13;
         public int Padding = 14;
         public int GraphHeight = 40;
+
+        // ---- Liquid Glass (власний рендер: розмиття + заломлення краю)
+        public int Blur = 18;
+        public int Refraction = 55;
+        public int Dispersion = 25;
+        public int Saturation = 150;
+        public int Brightness = 100;
+        public int GlassFps = 30;
+
+        // ---- радар звуку
+        public bool RadarHighPass = true;
+        public bool RadarBlips = true;
 
         // ---- фон (GIF / картинка)
         public string BackgroundPath = "";
@@ -63,7 +75,7 @@ namespace SystemMonitor
         public int EffectiveGlassMode()
         {
             if (GlassMode >= 0) return GlassMode;
-            return Environment.OSVersion.Version.Build >= 22621 ? 2 : 1;
+            return 3;   // Liquid Glass
         }
 
         public static void Load()
@@ -103,15 +115,20 @@ namespace SystemMonitor
             switch (name)
             {
                 case "Liquid Glass":
-                    c.TintColor = "#FFFFFF"; c.TintStrength = 14; c.Highlight = 65; c.Border = 75; c.CornerRadius = 24; c.TextColor = "#F2F2F2"; break;
+                    c.TintColor = "#FFFFFF"; c.TintStrength = 14; c.Highlight = 65; c.Border = 75; c.CornerRadius = 24; c.TextColor = "#F2F2F2";
+                    c.Blur = 16; c.Refraction = 60; c.Dispersion = 30; c.Saturation = 160; c.Brightness = 100; break;
                 case "Темне скло":
-                    c.TintColor = "#14161C"; c.TintStrength = 45; c.Highlight = 20; c.Border = 35; c.CornerRadius = 16; c.TextColor = "#F2F2F2"; break;
+                    c.TintColor = "#14161C"; c.TintStrength = 45; c.Highlight = 20; c.Border = 35; c.CornerRadius = 16; c.TextColor = "#F2F2F2";
+                    c.Blur = 14; c.Refraction = 25; c.Dispersion = 5; c.Saturation = 120; c.Brightness = 100; break;
                 case "Неон":
-                    c.TintColor = "#0A1830"; c.TintStrength = 50; c.Highlight = 40; c.Border = 90; c.CornerRadius = 14; c.TextColor = "#9EF7FF"; break;
+                    c.TintColor = "#0A1830"; c.TintStrength = 50; c.Highlight = 40; c.Border = 90; c.CornerRadius = 14; c.TextColor = "#9EF7FF";
+                    c.Blur = 14; c.Refraction = 45; c.Dispersion = 40; c.Saturation = 220; c.Brightness = 100; break;
                 case "Сакура":
-                    c.TintColor = "#FFB6D0"; c.TintStrength = 28; c.Highlight = 70; c.Border = 80; c.CornerRadius = 28; c.TextColor = "#FFF4F8"; break;
+                    c.TintColor = "#FFB6D0"; c.TintStrength = 28; c.Highlight = 70; c.Border = 80; c.CornerRadius = 28; c.TextColor = "#FFF4F8";
+                    c.Blur = 20; c.Refraction = 50; c.Dispersion = 25; c.Saturation = 150; c.Brightness = 105; break;
                 case "Ліс":
-                    c.TintColor = "#16301F"; c.TintStrength = 42; c.Highlight = 30; c.Border = 45; c.CornerRadius = 20; c.TextColor = "#E6FFE9"; break;
+                    c.TintColor = "#16301F"; c.TintStrength = 42; c.Highlight = 30; c.Border = 45; c.CornerRadius = 20; c.TextColor = "#E6FFE9";
+                    c.Blur = 18; c.Refraction = 35; c.Dispersion = 10; c.Saturation = 130; c.Brightness = 100; break;
                 case "Суцільний":
                     c.GlassMode = 0; c.SolidColor = "#14161C"; c.CornerRadius = 10; c.Border = 20; c.TextColor = "#F2F2F2"; break;
             }

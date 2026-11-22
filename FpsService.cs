@@ -61,6 +61,17 @@ namespace SystemMonitor
 
         void Reader()
         {
+            try { ReaderCore(); }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                Log.Write("PresentMon, потік: " + ex);
+                Status = FpsStatus.Failed;
+            }
+        }
+
+        void ReaderCore()
+        {
             try
             {
                 foreach (Process p in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(exe)))

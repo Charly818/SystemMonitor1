@@ -18,6 +18,7 @@ namespace SystemMonitor
         public static PlayerWindow Player;
         public static RadarWindow Radar;
         public static bool Hidden;
+        public static bool SafeStart;
 
         static SettingsWindow settings;
         static StatsWindow stats;
@@ -29,26 +30,50 @@ namespace SystemMonitor
 
         public static void Start()
         {
-            Log.Init();
-            Log.Write("старт, версія 2.0, ОС " + Environment.OSVersion.Version);
-            AppConfig.Load();
-            SessionStats.LoadDay();
+            try
+            {
+                Log.Write("старт, версія 2.0.2, ОС " + Environment.OSVersion.Version + (SafeStart ? ", БЕЗПЕЧНИЙ РЕЖИМ" : ""));
+                Log.Write("крок 1: конфіг");
+                AppConfig.Load();
+                if (SafeStart)
+                {
+                    Cfg.GlassMode = 0;
+                    Cfg.AnimatedSheen = false;
+                    Cfg.BackgroundPath = "";
+                }
+                SessionStats.LoadDay();
 
-            Sensors = new SensorService();
-            Fps = new FpsService();
-            Extras = new ExtrasService();
-            Media = new MediaService();
-            Audio = new AudioDirectionService();
-            Comp = new Components();
+                Log.Write("крок 2: служби");
+                Sensors = new SensorService();
+                Fps = new FpsService();
+                Extras = new ExtrasService();
+                Media = new MediaService();
+                Audio = new AudioDirectionService();
+                Comp = new Components();
 
-            Panel = new MainPanel();
-            Player = new PlayerWindow();
-            Radar = new RadarWindow();
+                Log.Write("крок 3: вікна");
+                Panel = new MainPanel();
+                Player = new PlayerWindow();
+                Radar = new RadarWindow();
 
-            applyTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
-            applyTimer.Tick += delegate { applyTimer.Stop(); Cfg.Save(); ApplyAll(); };
+                applyTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+                applyTimer.Tick += delegate { applyTimer.Stop(); Cfg.Save(); ApplyAll(); };
 
-            ApplyAll();
+                Log.Write("крок 4: застосування налаштувань і показ вікон");
+                ApplyAll();
+                Log.Write("крок 5: готово, панель видима: " + Panel.IsVisible);
+
+                if (!Panel.IsVisible && !Player.IsVisible && !Radar.IsVisible)
+                {
+                    Log.Write("жодне вікно не видно: відкриваю налаштування");
+                    OpenSettings(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.ShowError("Помилка запуску", ex);
+                try { OpenSettings(false); } catch { }
+            }
 
             if (!Cfg.SetupDone)
             {
@@ -66,6 +91,24 @@ namespace SystemMonitor
         }
 
         public static void ApplyAll()
+        {
+            try { ApplyAllCore(); }
+            catch (Exception ex)
+            {
+                Log.Write("ApplyAll: " + ex);
+                if (Cfg.GlassMode != 0)
+                {
+                    Log.Write("повторна спроба в суцільному режимі");
+                    Cfg.GlassMode = 0;
+                    Cfg.AnimatedSheen = false;
+                    Cfg.Save();
+                    ApplyAllCore();
+                }
+                else throw;
+            }
+        }
+
+        static void ApplyAllCore()
         {
             AppConfig c = Cfg;
             if (!c.ShowPanel && !c.ShowPlayer && !c.ShowRadar) c.ShowPanel = true;   // має лишатися хоч щось, щоб відкрити меню
