@@ -64,13 +64,14 @@ namespace SystemMonitor
             ShowInTaskbar = false;
             ShowActivated = false;
             Topmost = true;
-            AllowsTransparency = false;
+            AllowsTransparency = true;   // прозорість по пікселях: кути гладкі, скло справді прозоре
             Background = Brushes.Transparent;
             SizeToContent = SizeToContent.WidthAndHeight;
             WindowStartupLocation = WindowStartupLocation.Manual;
             UseLayoutRounding = true;
 
             Layers.ClipToBounds = true;
+            Layers.SizeChanged += delegate { ApplyRegion(); };
             BgImage.Stretch = Stretch.UniformToFill;
             BgImage.IsHitTestVisible = false;
             BgImage.Visibility = Visibility.Collapsed;
@@ -266,26 +267,11 @@ namespace SystemMonitor
         void ApplyGlassMode()
         {
             if (Hwnd == IntPtr.Zero) return;
-            AppConfig c = Cfg;
             int mode = Mode;
-            HwndSource src = HwndSource.FromHwnd(Hwnd);
-
-            Native.SetAccent(Hwnd, 0, 0);
-            Native.SetDwmInt(Hwnd, Native.DWMWA_SYSTEMBACKDROP_TYPE, 1);   // без системного фону
-
-            if (mode != 3)
-            {
-                Native.SetWindowDisplayAffinity(Hwnd, 0);
-                GlassImage.Visibility = Visibility.Collapsed;
-                glassTimer.Stop();
-            }
+            Background = Brushes.Transparent;
 
             if (mode == 3)
             {
-                Color dark = Color.FromRgb(24, 26, 32);
-                Background = Util.Brush(dark);
-                if (src != null && src.CompositionTarget != null) src.CompositionTarget.BackgroundColor = dark;
-                Native.ExtendFrame(Hwnd, 0);
                 // ховаємо наше вікно від знімків екрана, щоб розмивати лише те, що позаду нього
                 if (!Native.SetWindowDisplayAffinity(Hwnd, Native.WDA_EXCLUDEFROMCAPTURE))
                 {
@@ -296,32 +282,14 @@ namespace SystemMonitor
                     return;
                 }
                 GlassImage.Visibility = Visibility.Visible;
-                glassTimer.Interval = TimeSpan.FromMilliseconds(1000.0 / Math.Max(5, Math.Min(60, c.GlassFps)));
+                glassTimer.Interval = TimeSpan.FromMilliseconds(1000.0 / Math.Max(5, Math.Min(60, Cfg.GlassFps)));
                 glassTimer.Start();
-            }
-            else if (mode == 0)
-            {
-                Color solid = Util.Hex(c.SolidColor, "#14161C");
-                Background = Util.Brush(solid);
-                if (src != null && src.CompositionTarget != null) src.CompositionTarget.BackgroundColor = solid;
-                Native.ExtendFrame(Hwnd, 0);
             }
             else
             {
-                Background = Brushes.Transparent;
-                if (src != null && src.CompositionTarget != null) src.CompositionTarget.BackgroundColor = Colors.Transparent;
-                Native.ExtendFrame(Hwnd, -1);
-                Native.SetDwmInt(Hwnd, Native.DWMWA_USE_IMMERSIVE_DARK_MODE, 1);
-                if (mode == 1)
-                {
-                    Color t = Util.Hex(c.TintColor);
-                    uint abgr = (uint)(0x01 << 24 | t.B << 16 | t.G << 8 | t.R);
-                    Native.SetAccent(Hwnd, 4, abgr);                       // Acrylic через accent policy
-                }
-                else
-                {
-                    Native.SetDwmInt(Hwnd, Native.DWMWA_SYSTEMBACKDROP_TYPE, 3);   // Windows 11 Acrylic
-                }
+                Native.SetWindowDisplayAffinity(Hwnd, 0);
+                GlassImage.Visibility = Visibility.Collapsed;
+                glassTimer.Stop();
             }
         }
 
@@ -338,7 +306,7 @@ namespace SystemMonitor
                 LgParams p = new LgParams
                 {
                     Blur = c.Blur, Refraction = c.Refraction, Dispersion = c.Dispersion, Saturation = c.Saturation,
-                    Brightness = c.Brightness, Highlight = c.Highlight, Radius = c.CornerRadius,
+                    Brightness = c.Brightness, Highlight = c.Highlight, Radius = c.CornerRadius, Strength = c.GlassStrength,
                     TintR = tintColor.R, TintG = tintColor.G, TintB = tintColor.B, TintAlpha = tintAlpha,
                 };
                 if (lg == null) lg = new LiquidGlass();
@@ -359,15 +327,16 @@ namespace SystemMonitor
             }
         }
 
+        /// <summary>Гладко заокруглює всі шари скла напівпрозорою маскою (без зубчастих кутів).</summary>
         void ApplyRegion()
         {
-            if (Hwnd == IntPtr.Zero || ActualWidth <= 0 || ActualHeight <= 0) return;
-            DpiScale dpi = VisualTreeHelper.GetDpi(this);
-            int w = (int)Math.Ceiling(ActualWidth * dpi.DpiScaleX);
-            int h = (int)Math.Ceiling(ActualHeight * dpi.DpiScaleY);
-            int r = (int)Math.Round(Cfg.CornerRadius * dpi.DpiScaleX);
-            if (r <= 0) { Native.SetWindowRgn(Hwnd, IntPtr.Zero, true); return; }
-            Native.SetWindowRgn(Hwnd, Native.CreateRoundRectRgn(0, 0, w + 1, h + 1, r * 2, r * 2), true);
+            double w = Layers.ActualWidth, h = Layers.ActualHeight;
+            if (w <= 1 || h <= 1) return;
+            double r = Math.Max(0, Cfg.CornerRadius - (Cfg.Border > 0 ? 1 : 0));
+            RectangleGeometry geo = new RectangleGeometry(new Rect(0, 0, w, h), r, r);
+            DrawingBrush mask = new DrawingBrush(new GeometryDrawing(Brushes.Black, null, geo));
+            mask.Freeze();
+            Layers.OpacityMask = mask;
         }
 
         /// <summary>Живий «рідкий» блік: м'яка світла смуга повільно пропливає по склу.</summary>

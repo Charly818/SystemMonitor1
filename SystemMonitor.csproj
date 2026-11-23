@@ -11,7 +11,9 @@
     <StartupObject>SystemMonitor.Program</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>icon.ico</ApplicationIcon>
-    <Version>2.0.2</Version>
+    <Version>2.0.4</Version>
+    <UpdateRepo></UpdateRepo>
+    <StatsUrl></StatsUrl>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 
     <!-- Один самодостатній .exe: .NET усередині, нічого встановлювати не потрібно -->
@@ -22,6 +24,17 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <DebugType>none</DebugType>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>UpdateRepo</_Parameter1>
+      <_Parameter2>$(UpdateRepo)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>StatsUrl</_Parameter1>
+      <_Parameter2>$(StatsUrl)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.*" />

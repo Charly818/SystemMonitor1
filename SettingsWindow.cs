@@ -12,7 +12,7 @@ namespace SystemMonitor
     internal sealed class SettingsWindow : Window
     {
         readonly DispatcherTimer statusTimer;
-        TextBlock stAdmin, stSensors, stCpu, stPm, stPawn, stMouse, stAuto, stAudio;
+        TextBlock stAdmin, stSensors, stCpu, stPm, stPawn, stMouse, stAuto, stAudio, stUpdate;
         static AppConfig Cfg { get { return AppConfig.Cur; } }
 
         public SettingsWindow()
@@ -150,18 +150,16 @@ namespace SystemMonitor
             StackPanel modeRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
             modeRow.Children.Add(new TextBlock { Text = "Спосіб скла", Width = 210, VerticalAlignment = VerticalAlignment.Center });
             ComboBox cb = new ComboBox { Width = 260 };
-            cb.Items.Add("Авто (Liquid Glass)");
+            cb.Items.Add("Liquid Glass (живе скло)");
             cb.Items.Add("Суцільний (без скла)");
-            cb.Items.Add("Acrylic (запасний)");
-            cb.Items.Add("Windows 11 Acrylic");
-            cb.Items.Add("Liquid Glass (живе)");
-            cb.SelectedIndex = Math.Max(0, Math.Min(4, Cfg.GlassMode + 1));
-            cb.SelectionChanged += delegate { Cfg.GlassMode = cb.SelectedIndex - 1; AppCore.RequestApply(); };
+            cb.SelectedIndex = Cfg.GlassMode == 0 ? 1 : 0;
+            cb.SelectionChanged += delegate { Cfg.GlassMode = cb.SelectedIndex == 1 ? 0 : -1; AppCore.RequestApply(); };
             modeRow.Children.Add(cb);
             p.Children.Add(modeRow);
             AddNote(p, "Liquid Glass розмиває й заломлює те, що позаду панелі, і оновлює це в реальному часі, навіть коли ви "
                      + "її перетягуєте. Побічний ефект: панель не видно на скріншотах і в записі екрана (для скріншота оберіть «Суцільний»).");
 
+            AddSlider(p, "Сила скла, % (менше = прозоріше)", 0, 100, () => Cfg.GlassStrength, v => Cfg.GlassStrength = v);
             AddSlider(p, "Розмиття", 0, 40, () => Cfg.Blur, v => Cfg.Blur = v);
             AddSlider(p, "Заломлення по краях, %", 0, 100, () => Cfg.Refraction, v => Cfg.Refraction = v);
             AddSlider(p, "Дисперсія (кольорові краї), %", 0, 100, () => Cfg.Dispersion, v => Cfg.Dispersion = v);
@@ -312,6 +310,21 @@ namespace SystemMonitor
             bool autoOn = AppCore.Comp.AutostartEnabled();
             AppCore.Comp.AutoMsg = autoOn ? "увімкнено" : "вимкнено";
             AddCheck(p, "Запускати разом з Windows (без запитів)", () => autoOn, v => AppCore.Comp.SetAutostart(v));
+            if (Telemetry.Available)
+            {
+                AddHeader(p, "Анонімна статистика");
+                AddCheck(p, "Надсилати розробнику анонімну статистику використання", () => Cfg.StatsEnabled, v => Cfg.StatsEnabled = v);
+                AddNote(p, "Надсилається лише випадковий номер установки, версія програми, версія Windows і мова. Особистих даних немає.");
+            }
+
+            AddHeader(p, "Оновлення");
+            stUpdate = AddStatus(p, "Версія і стан:");
+            Button bu = new Button { Content = "Перевірити оновлення", Padding = new Thickness(10, 4, 10, 4), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 4) };
+            bu.Click += async delegate { await Updater.CheckAsync(true); };
+            p.Children.Add(bu);
+            AddCheck(p, "Оновлювати автоматично (інакше програма спитає перед установкою)", () => Cfg.AutoUpdate, v => Cfg.AutoUpdate = v);
+            AddText(p, "Репозиторій GitHub (власник/назва)", () => Cfg.UpdateRepo, v => Cfg.UpdateRepo = v);
+            AddNote(p, "Репозиторій вшивається автоматично, якщо програму зібрано через GitHub Actions. Це поле потрібне лише для локальної збірки.");
             AddNote(p, "Журнал: " + Log.FilePath);
             return p;
         }
@@ -339,6 +352,7 @@ namespace SystemMonitor
             stMouse.Text = AppCore.Extras.MouseStatus;
             stAuto.Text = AppCore.Comp.AutoMsg.Length > 0 ? AppCore.Comp.AutoMsg : "—";
             if (stAudio != null) stAudio.Text = AppCore.Audio.Status;
+            if (stUpdate != null) stUpdate.Text = "Версія " + Updater.CurrentText + ". " + Updater.Status;
         }
     }
 }

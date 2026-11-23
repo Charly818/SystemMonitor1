@@ -32,7 +32,7 @@ namespace SystemMonitor
         {
             try
             {
-                Log.Write("старт, версія 2.0.2, ОС " + Environment.OSVersion.Version + (SafeStart ? ", БЕЗПЕЧНИЙ РЕЖИМ" : ""));
+                Log.Write("старт, версія 2.0.4, ОС " + Environment.OSVersion.Version + (SafeStart ? ", БЕЗПЕЧНИЙ РЕЖИМ" : ""));
                 Log.Write("крок 1: конфіг");
                 AppConfig.Load();
                 if (SafeStart)
@@ -62,6 +62,15 @@ namespace SystemMonitor
                 Log.Write("крок 4: застосування налаштувань і показ вікон");
                 ApplyAll();
                 Log.Write("крок 5: готово, панель видима: " + Panel.IsVisible);
+                Updater.Cleanup();
+                Updater.Start();
+                Telemetry.Start();
+                if (Cfg.SetupDone && Telemetry.Available && !Cfg.StatsAsked)
+                {
+                    DispatcherTimer ask = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+                    ask.Tick += delegate { ask.Stop(); AskStats(); };
+                    ask.Start();
+                }
 
                 if (!Panel.IsVisible && !Player.IsVisible && !Radar.IsVisible)
                 {
@@ -220,6 +229,21 @@ namespace SystemMonitor
             if (MessageBox.Show("Запускати монітор разом з Windows?\n(без запитів, з правами адміністратора)", "Системний монітор",
                     MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
                 Comp.SetAutostart(true);
+            AskStats();
+        }
+
+        static void AskStats()
+        {
+            if (!Telemetry.Available || Cfg.StatsAsked) return;
+            Cfg.StatsAsked = true;
+            Cfg.StatsEnabled = MessageBox.Show(
+                "Надсилати розробнику анонімну статистику використання?\n\n"
+                + "Надсилається лише: випадковий номер установки, версія програми, версія Windows і мова системи. "
+                + "Імена, файли, паролі, IP-адреса та інші особисті дані не збираються.\n\n"
+                + "Це допомагає розробнику бачити, скільки людей користуються програмою. "
+                + "Вимкнути можна будь-коли: Налаштування → Компоненти.",
+                "Системний монітор: статистика", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+            Cfg.Save();
         }
 
         public static void Quit()

@@ -24,10 +24,13 @@ namespace SystemMonitor
         [STAThread]
         public static void Main(string[] args)
         {
-            bool created;
-            using (Mutex mutex = new Mutex(true, "SystemMonitorGlass_v2", out created))
+            bool restarted = Array.IndexOf(args, "--restarted") >= 0;
+            using (Mutex mutex = new Mutex(false, "SystemMonitorGlass_v2"))
             {
-                if (!created) return;   // уже запущено
+                bool owned;
+                try { owned = mutex.WaitOne(restarted ? 20000 : 0); }
+                catch (AbandonedMutexException) { owned = true; }   // попередній екземпляр завершився, не відпустивши м'ютекс
+                if (!owned) return;   // уже запущено
 
                 Log.Init();
                 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
@@ -50,6 +53,7 @@ namespace SystemMonitor
                 app.Startup += delegate { AppCore.Start(); };
                 app.Run();
             }
+
         }
     }
 }

@@ -8,7 +8,7 @@ namespace SystemMonitor
 {
     internal sealed class LgParams
     {
-        public int Blur, Refraction, Dispersion, Saturation, Brightness, Highlight, Radius;
+        public int Blur, Refraction, Dispersion, Saturation, Brightness, Highlight, Radius, Strength;
         public byte TintR, TintG, TintB;
         public double TintAlpha;
 
@@ -16,7 +16,7 @@ namespace SystemMonitor
         {
             long h = 17;
             h = h * 31 + Blur; h = h * 31 + Refraction; h = h * 31 + Dispersion; h = h * 31 + Saturation;
-            h = h * 31 + Brightness; h = h * 31 + Highlight; h = h * 31 + Radius;
+            h = h * 31 + Brightness; h = h * 31 + Highlight; h = h * 31 + Radius; h = h * 31 + Strength;
             h = h * 31 + TintR; h = h * 31 + TintG; h = h * 31 + TintB; h = h * 31 + (long)(TintAlpha * 1000);
             return h;
         }
@@ -31,7 +31,7 @@ namespace SystemMonitor
     {
         IntPtr screenDc, memDc, dib, oldBmp, bits;
         int capW, capH, sw, sh, bmpW, bmpH;
-        byte[] cap, s, t, o;
+        byte[] cap, s, s0, t, o;
         long lastHash = long.MinValue;
         public WriteableBitmap Bitmap;
 
@@ -157,7 +157,21 @@ namespace SystemMonitor
             if (hash == lastHash && Bitmap != null) return;
             lastHash = hash;
 
+            double k = Math.Max(0.0, Math.Min(1.0, p.Strength / 100.0));   // 1 = повне скло, 0 = майже прозоре
+            if (k < 1.0)
+            {
+                if (s0 == null || s0.Length != sLen) s0 = new byte[sLen];
+                Buffer.BlockCopy(s, 0, s0, 0, sLen);
+            }
             if (rb > 0) { BoxH(s, t, sw, sh, rb); BoxV(t, s, sw, sh, rb); BoxH(s, t, sw, sh, rb); BoxV(t, s, sw, sh, rb); }
+            if (k < 1.0 && rb > 0)
+            {
+                for (int i = 0; i < sLen; i++)
+                {
+                    if ((i & 3) == 3) continue;
+                    s[i] = (byte)(s0[i] + (s[i] - s0[i]) * k);
+                }
+            }
 
             int oLen = w2 * h2 * 4;
             if (o == null || o.Length != oLen) o = new byte[oLen];
@@ -165,7 +179,7 @@ namespace SystemMonitor
             double r2 = Math.Min(p.Radius * dpi / 2.0, Math.Min(w2, h2) / 2.0);
             double cx = w2 / 2.0, cy = h2 / 2.0;
             double hx = cx - r2, hy = cy - r2;
-            double sat = p.Saturation / 100.0, bright = p.Brightness / 100.0, ta = p.TintAlpha;
+            double sat = 1 + (p.Saturation / 100.0 - 1) * k, bright = 1 + (p.Brightness / 100.0 - 1) * k, ta = p.TintAlpha;
             double disp = p.Dispersion / 100.0;
             double glowK = p.Highlight / 100.0 * 0.35;
             int oi = 0;
